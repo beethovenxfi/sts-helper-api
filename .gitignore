@@ -1,0 +1,4 @@
+.env
+.validator-mapping.json
+node_modules
+.vercel

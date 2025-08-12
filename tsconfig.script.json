@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "lib": ["es2020", "dom"],
+    "verbatimModuleSyntax": false,
+    "moduleDetection": "auto",
+    "module": "commonjs",
+    "target": "es2020",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["src/track-balances.ts", "src/delegation-analysis.ts", "src/withdrawal-calculator.ts", "src/track-validator-delegation-boost.ts"],
+  "ts-node": {
+    "esm": false
+  }
+}
