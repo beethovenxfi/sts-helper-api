@@ -31,9 +31,7 @@ router.get('/unstake-recommendation', async (req, res) => {
 
         // Format response
         const response = {
-            success: true,
-            data: { recommendations },
-            timestamp: new Date().toISOString(),
+            data: recommendations,
         };
 
         res.json(response);
@@ -130,7 +128,6 @@ router.get('/stake-recommendation', async (req, res) => {
                         .sort((a, b) => parseFloat(b.validatorId) - parseFloat(a.validatorId)),
                 },
             },
-            timestamp: new Date().toISOString(),
         };
 
         res.json(response);
