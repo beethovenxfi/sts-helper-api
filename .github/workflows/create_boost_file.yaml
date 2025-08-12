@@ -9,7 +9,7 @@ env:
     VALIDATOR_MAPPING: ${{ secrets.VALIDATOR_MAPPING }}
 
 jobs:
-    collectFees:
+    createTrackingFile:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
