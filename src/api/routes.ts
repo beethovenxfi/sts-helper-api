@@ -54,7 +54,7 @@ router.get('/stake-recommendation', async (req, res) => {
             data: {
                 summary: {
                     totalDelegation: analysisData.summary.totalDelegation,
-                    totalBoostedDelegation: analysisData.summary.totalBoostedDelegation,
+                    totalSelfDelegations: analysisData.summary.totalBoostedDelegation,
                     allowedValidators: analysisData.summary.allowedValidators,
                 },
                 recommendations: {
