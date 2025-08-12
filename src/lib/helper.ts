@@ -102,7 +102,7 @@ export function calculateExpectedDelegations(
 export async function loadValidatorBoostData(): Promise<ValidatorBoostData[]> {
     try {
         const csvUrl =
-            'https://raw.githubusercontent.com/sonic-validators/validator-withdraw-api/main/src/results/validator-delegation-boost.csv';
+            'https://raw.githubusercontent.com/beethovenxfi/sts-helper-api/refs/heads/main/src/results/validator-delegation-boost.csv';
         console.log(`🔄 Loading validator boost data from: ${csvUrl}`);
 
         // Fetch CSV data from URL
