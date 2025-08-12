@@ -12,21 +12,20 @@ jobs:
     createTrackingFile:
         runs-on: ubuntu-latest
         steps:
-    steps:
-        - uses: actions/checkout@v3
-        - name: Use Node.js ${{ matrix.node-version }}
-          uses: actions/setup-node@v3
-          with:
-              node-version: ${{ matrix.node-version }}
-        - run: yarn install
+            - uses: actions/checkout@v3
+            - name: Use Node.js ${{ matrix.node-version }}
+              uses: actions/setup-node@v3
+              with:
+                  node-version: ${{ matrix.node-version }}
+            - run: yarn install
 
-        - name: Create a new boost tracking file
-          env:
-              VALIDATOR_MAPPING: ${{ secrets.VALIDATOR_MAPPING }}
-          run: yarn ts-node ./src/lib/find-wallet-balances.ts
+            - name: Create a new boost tracking file
+              env:
+                  VALIDATOR_MAPPING: ${{ secrets.VALIDATOR_MAPPING }}
+              run: yarn ts-node ./src/lib/find-wallet-balances.ts
 
-        - uses: stefanzweifel/git-auto-commit-action@v6
-          with:
-              commit_message: 'update boost tracking file'
-              commit_user_name: 'GitHub Actions'
-              commit_user_email: 'github-actions@users.noreply.github.com'
+            - uses: stefanzweifel/git-auto-commit-action@v6
+              with:
+                  commit_message: 'update boost tracking file'
+                  commit_user_name: 'GitHub Actions'
+                  commit_user_email: 'github-actions@users.noreply.github.com'
