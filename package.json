@@ -5,7 +5,7 @@
     "license": "MIT",
     "scripts": {
         "dev": "ts-node -r dotenv/config src/api-server.ts",
-        "validator-balances": "ts-node -r dotenv/config src/find-wallet-balances.ts"
+        "validator-balances": "ts-node -r dotenv/config src/lib/find-wallet-balances.ts"
     },
     "dependencies": {
         "@actions/core": "^1.11.1",
