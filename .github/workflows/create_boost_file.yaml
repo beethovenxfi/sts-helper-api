@@ -1,0 +1,34 @@
+name: Create new boost tracking file
+
+on:
+    schedule:
+        - cron: '0 0 * * *' # Runs at midnight every day
+    workflow_dispatch:
+
+env:
+    VALIDATOR_MAPPING: ${{ secrets.VALIDATOR_MAPPING }}
+
+jobs:
+    collectFees:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v3
+
+            - name: Use Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+            - name: Install deps
+              run: bun install --frozen-lockfile
+
+            - name: Create a new boost tracking file
+              env:
+                  VALIDATOR_MAPPING: ${{ secrets.VALIDATOR_MAPPING }}
+              run: bun ts-node ./src/lib/find-wallet-balances.ts
+
+            - uses: stefanzweifel/git-auto-commit-action@v6
+              with:
+                  commit_message: 'update boost tracking file'
+                  commit_user_name: 'GitHub Actions'
+                  commit_user_email: 'github-actions@users.noreply.github.com'

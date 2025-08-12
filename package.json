@@ -5,16 +5,10 @@
     "license": "MIT",
     "scripts": {
         "dev": "ts-node -r dotenv/config src/api-server.ts",
-        "dev:vercel": "vercel dev",
-        "build": "tsc",
-        "start": "node dist/api-server.js",
-        "start:express": "ts-node -r dotenv/config src/api-server.ts",
-        "track-balances": "ts-node src/track-balances.ts",
-        "delegation-analysis": "ts-node src/delegation-analysis.ts",
-        "withdrawal-calculator": "ts-node src/withdrawal-calculator.ts",
-        "track-boost": "ts-node -r dotenv/config src/track-validator-delegation-boost.ts"
+        "validator-balances": "ts-node -r dotenv/config src/find-wallet-balances.ts"
     },
     "dependencies": {
+        "@actions/core": "^1.11.1",
         "@types/cors": "^2.8.19",
         "@types/express": "4.17.21",
         "@types/node": "^24.2.1",

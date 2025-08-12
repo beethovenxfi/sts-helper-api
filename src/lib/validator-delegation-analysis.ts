@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import { createPublicClient, http, formatUnits, getAddress } from 'viem';
 import { sonic } from 'viem/chains';
 import { API_URL, ALLOWED_VALIDATORS, SFC_ADDRESS } from './constants';
-import { calculateExpectedDelegations, getDelegationData, ValidatorBoostData } from './helper';
+import { calculateExpectedDelegations, getDelegationData, loadValidatorBoostData, ValidatorBoostData } from './helper';
 
 // SFC (Staker Faucet Contract) address for Sonic chain
 
@@ -127,8 +127,9 @@ async function getValidatorInfos(validatorIds: string[]): Promise<Map<string, Va
 }
 
 // Export for use in API
-export async function getValidatorAnalysisData(validatorData: ValidatorBoostData[]) {
+export async function getValidatorAnalysisData() {
     try {
+        const validatorData = await loadValidatorBoostData();
         // Get delegation data
         const delegationData = await getDelegationData();
 

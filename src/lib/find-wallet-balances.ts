@@ -1,8 +1,8 @@
-import 'dotenv/config';
+import * as core from '@actions/core';
 import { createPublicClient, http, formatUnits, getAddress, parseEther, formatEther } from 'viem';
 import { sonic } from 'viem/chains';
 import * as fs from 'fs';
-import { API_URL, trackedTokens, stSAddress } from './constants';
+import { API_URL, stSAddress } from './constants';
 import { ValidatorBoostData } from './helper';
 
 const TRACKED_TOKENS = [
@@ -165,7 +165,7 @@ async function getPoolDataForUser(userAddress: string): Promise<PoolData[]> {
     }
 }
 
-export async function trackWalletBalances() {
+async function run(): Promise<void> {
     try {
         const validatorMappingEnv = process.env.VALIDATOR_MAPPING;
 
@@ -279,24 +279,11 @@ export async function trackWalletBalances() {
             const sBalance = stsBalance * stsRate;
             const weight = totalStS > 0 ? (stsBalance / totalStS) * 100 : 0;
 
-            // Check if validator is in a group
-            let isGrouped = false;
-            let groupId: number | undefined;
-
-            VALIDATOR_GROUPS.forEach((group, index) => {
-                if (group.includes(validatorId)) {
-                    isGrouped = true;
-                    groupId = index;
-                }
-            });
-
             results.push({
                 validatorId,
                 totalStSBalance: stsBalance,
                 totalSBalance: sBalance,
                 weight,
-                isGrouped,
-                groupId,
             });
 
             csvData.push(`${validatorId},${stsBalance.toFixed(6)},${sBalance.toFixed(6)},${weight.toFixed(4)}`);
@@ -307,37 +294,19 @@ export async function trackWalletBalances() {
         const resultsDir = 'src/results';
         const fileName = `${resultsDir}/validator-delegation-boost.csv`;
 
-        // Check if we're in a serverless environment
-        const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.FUNCTIONS_WORKER;
-
-        if (!isServerless) {
-            try {
-                if (!fs.existsSync(resultsDir)) {
-                    fs.mkdirSync(resultsDir, { recursive: true });
-                }
-
-                fs.writeFileSync(fileName, csvContent, 'utf8');
-                console.log(`📄 Results written to ${fileName}`);
-            } catch (error) {
-                console.error('Error writing CSV file:', error);
+        try {
+            if (!fs.existsSync(resultsDir)) {
+                fs.mkdirSync(resultsDir, { recursive: true });
             }
-        } else {
-            console.log('📄 Serverless environment detected - CSV data included in response instead of file');
-        }
 
-        // Return the results for API usage
-        return {
-            summary: {
-                totalStS: totalStS,
-                stsRate: stsRate,
-                validatorCount: results.length,
-                csvFileName: fileName,
-            },
-            validators: results,
-            csvData: csvContent,
-        };
+            fs.writeFileSync(fileName, csvContent, 'utf8');
+            console.log(`📄 Results written to ${fileName}`);
+        } catch (error) {
+            console.error('Error writing CSV file:', error);
+        }
     } catch (error) {
-        console.error('Error tracking wallet balances:', error);
-        throw error;
+        core.setFailed(error as Error);
     }
 }
+
+run();

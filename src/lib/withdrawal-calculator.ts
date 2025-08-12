@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { ALLOWED_VALIDATORS } from './constants';
-import { calculateExpectedDelegations, getDelegationData, ValidatorBoostData } from './helper';
+import { calculateExpectedDelegations, getDelegationData, loadValidatorBoostData, ValidatorBoostData } from './helper';
 
 interface WithdrawalRecommendation {
     withdrawalAmount: number;
@@ -13,38 +13,6 @@ interface ValidatorAnalysis {
     expectedDelegation: number;
     overDelegated: number;
     isOverDelegated: boolean;
-}
-
-function loadValidatorBoostWeights(): Map<string, ValidatorBoostData> {
-    try {
-        const csvContent = fs.readFileSync('src/results/validator-delegation-boost.csv', 'utf8');
-        const lines = csvContent.trim().split('\n');
-        const header = lines[0]; // Skip header
-
-        if (!header.includes('total_sts_amount') || !header.includes('weight')) {
-            console.error('Invalid CSV format. Please run track-validator-delegation-boost.ts first.');
-            return new Map();
-        }
-
-        const boostWeights = new Map<string, ValidatorBoostData>();
-
-        for (let i = 1; i < lines.length; i++) {
-            const [validatorId, totalStSAmount, totalSAmount, weight] = lines[i].split(',');
-
-            boostWeights.set(validatorId, {
-                validatorId,
-                totalStSAmount: parseFloat(totalStSAmount),
-                totalSAmount: parseFloat(totalSAmount),
-                weight: parseFloat(weight),
-            });
-        }
-
-        return boostWeights;
-    } catch (error) {
-        console.error('Error loading validator boost weights:', error);
-        console.error('Please run track-validator-delegation-boost.ts first to generate the boost data.');
-        return new Map();
-    }
 }
 
 function calculateWithdrawalsWithPriority(
@@ -163,9 +131,9 @@ function calculateWithdrawalsWithPriority(
 export async function calculateOptimalWithdrawals(withdrawalAmount: number): Promise<WithdrawalRecommendation[]> {
     try {
         // Load validator boost weights
-        const boostWeights = loadValidatorBoostWeights();
+        const boostWeights = await loadValidatorBoostData();
 
-        if (boostWeights.size === 0) {
+        if (boostWeights.length === 0) {
             console.log('❌ No boost weight data found. Please run track-validator-delegation-boost.ts first.');
             return [];
         }
@@ -182,7 +150,7 @@ export async function calculateOptimalWithdrawals(withdrawalAmount: number): Pro
         const totalDelegation = delegationData.reduce((sum, d) => sum + parseFloat(d.assetsDelegated), 0);
 
         const totalBoostedDelegation = Array.from(boostWeights.values()).reduce(
-            (sum, boost) => sum + boost.totalSAmount,
+            (sum, boost) => sum + boost.totalSBalance,
             0,
         );
 

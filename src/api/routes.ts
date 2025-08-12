@@ -50,8 +50,7 @@ router.get('/unstake-recommendation', async (req, res) => {
 // Endpoint to get current delegation analysis and staking recommendations
 router.get('/stake-recommendation', async (req, res) => {
     try {
-        const boostData = await getValidatorstSBalances();
-        const analysisData = await getValidatorAnalysisData(boostData.validatorData);
+        const analysisData = await getValidatorAnalysisData();
 
         const response = {
             data: {
