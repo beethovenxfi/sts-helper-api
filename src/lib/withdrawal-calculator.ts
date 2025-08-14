@@ -23,14 +23,8 @@ function calculateWithdrawalsWithPriority(
     const recommendations: WithdrawalRecommendation[] = [];
     let remainingWithdrawal = withdrawalAmount;
 
-    console.log(`\n🎯 WITHDRAWAL STRATEGY for ${withdrawalAmount.toLocaleString()} S:`);
-    console.log('='.repeat(80));
-
     // PRIORITY 1: Withdraw from not-allowed validators first (withdraw to 0)
     if (notAllowedValidators.length > 0) {
-        console.log('\n🚫 PRIORITY 1: Withdrawing from NOT-ALLOWED validators first');
-        console.log('-'.repeat(60));
-
         // Sort by highest delegation first to prioritize biggest withdrawals
         const sortedNotAllowed = notAllowedValidators.sort((a, b) => b.currentDelegation - a.currentDelegation);
 
@@ -48,28 +42,12 @@ function calculateWithdrawalsWithPriority(
                 });
 
                 remainingWithdrawal -= availableWithdrawal;
-
-                console.log(
-                    `🚫 Withdraw ${availableWithdrawal.toLocaleString()} S from NOT-ALLOWED Validator ${
-                        validator.validatorId
-                    }`,
-                );
-                console.log(`   Current: ${validator.currentDelegation.toLocaleString()} S → Target: 0 S`);
-                console.log(
-                    `   Remaining after withdrawal: ${(
-                        validator.currentDelegation - availableWithdrawal
-                    ).toLocaleString()} S`,
-                );
-                console.log();
             }
         }
     }
 
     // PRIORITY 2: If withdrawal amount remains, withdraw from over-delegated allowed validators
-    if (remainingWithdrawal > 0.01) {
-        console.log('\n🔴 PRIORITY 2: Withdrawing from OVER-DELEGATED allowed validators');
-        console.log('-'.repeat(60));
-
+    if (remainingWithdrawal > 0) {
         // Filter to only over-delegated validators and sort by highest over-delegation first
         const overDelegatedValidators = allowedValidators
             .filter((v) => v.isOverDelegated && v.overDelegated > 1)
@@ -91,21 +69,12 @@ function calculateWithdrawalsWithPriority(
                     });
 
                     remainingWithdrawal -= availableWithdrawal;
-
-                    console.log(
-                        `📤 Withdraw ${availableWithdrawal.toLocaleString()} S from Validator ${validator.validatorId}`,
-                    );
-                    console.log(
-                        `   Current: ${validator.currentDelegation.toLocaleString()} S, Expected: ${validator.expectedDelegation.toLocaleString()} S`,
-                    );
-                    console.log(`   Over-delegated by: ${validator.overDelegated.toLocaleString()} S`);
-                    console.log();
                 }
             }
         }
     }
 
-    if (remainingWithdrawal > 0.01) {
+    if (remainingWithdrawal > 0) {
         const totalAvailableFromNotAllowed = notAllowedValidators.reduce((sum, v) => sum + v.currentDelegation, 0);
         const totalAvailableFromOverDelegated = allowedValidators
             .filter((v) => v.isOverDelegated && v.overDelegated > 1)
@@ -198,18 +167,18 @@ export async function calculateOptimalWithdrawals(withdrawalAmount: number): Pro
             });
         }
 
+        // remove our own validator from withdrawals
+        const ourValidatorId = '44';
+        const ourValidatorIndex = validatorAnalyses.findIndex((r) => r.validatorId === ourValidatorId);
+        if (ourValidatorIndex !== -1) {
+            validatorAnalyses.splice(ourValidatorIndex, 1);
+        }
+
         // Calculate withdrawal recommendations - prioritize not-allowed validators first
         const recommendations = calculateWithdrawalsWithPriority(
             notAllowedValidators,
             validatorAnalyses,
             withdrawalAmount,
-        );
-
-        console.log('\n📋 SUMMARY:');
-        console.log(`Total withdrawal requested: ${withdrawalAmount.toLocaleString()} S`);
-        console.log(`Total recommendations: ${recommendations.length}`);
-        console.log(
-            `Total allocated: ${recommendations.reduce((sum, r) => sum + r.withdrawalAmount, 0).toLocaleString()} S`,
         );
 
         return recommendations;
