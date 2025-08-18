@@ -4,7 +4,7 @@
     "main": "src/api-server.ts",
     "license": "MIT",
     "scripts": {
-        "dev": "ts-node -r dotenv/config src/api-server.ts",
+        "dev": "ts-node -r dotenv/config api/index.ts",
         "validator-balances": "ts-node -r dotenv/config src/lib/find-wallet-balances.ts",
         "ts-node": "ts-node"
     },

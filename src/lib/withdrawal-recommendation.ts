@@ -1,24 +1,25 @@
 import * as fs from 'fs';
 import { ALLOWED_VALIDATORS } from './constants';
 import { calculateExpectedDelegations, getDelegationData, loadValidatorBoostData, ValidatorBoostData } from './helper';
+import { formatEther, parseEther } from 'viem/utils';
 
 interface WithdrawalRecommendation {
-    withdrawalAmount: number;
+    withdrawalAmount: string;
     validatorId: string;
 }
 
 interface ValidatorAnalysis {
     validatorId: string;
-    currentDelegation: number;
-    expectedDelegation: number;
-    overDelegated: number;
+    currentDelegation: bigint;
+    expectedDelegation: bigint;
+    overDelegated: bigint;
     isOverDelegated: boolean;
 }
 
 function calculateWithdrawalsWithPriority(
     notAllowedValidators: ValidatorAnalysis[],
     allowedValidators: ValidatorAnalysis[],
-    withdrawalAmount: number,
+    withdrawalAmount: bigint,
 ): WithdrawalRecommendation[] {
     const recommendations: WithdrawalRecommendation[] = [];
     let remainingWithdrawal = withdrawalAmount;
@@ -26,18 +27,20 @@ function calculateWithdrawalsWithPriority(
     // PRIORITY 1: Withdraw from not-allowed validators first (withdraw to 0)
     if (notAllowedValidators.length > 0) {
         // Sort by highest delegation first to prioritize biggest withdrawals
-        const sortedNotAllowed = notAllowedValidators.sort((a, b) => b.currentDelegation - a.currentDelegation);
+        const sortedNotAllowed = notAllowedValidators.sort(
+            (a, b) => parseFloat(formatEther(b.currentDelegation)) - parseFloat(formatEther(a.currentDelegation)),
+        );
 
         for (const validator of sortedNotAllowed) {
-            if (remainingWithdrawal <= 0) break;
+            if (remainingWithdrawal <= 0n) break;
 
             // Withdraw all delegation from not-allowed validators (or remaining withdrawal amount)
-            const availableWithdrawal = Math.min(validator.currentDelegation, remainingWithdrawal);
+            const availableWithdrawal =
+                remainingWithdrawal > validator.currentDelegation ? validator.currentDelegation : remainingWithdrawal;
 
-            if (availableWithdrawal > 0) {
-                // Include even tiny amounts like 0.005S
+            if (availableWithdrawal > 0n) {
                 recommendations.push({
-                    withdrawalAmount: availableWithdrawal,
+                    withdrawalAmount: availableWithdrawal.toString(),
                     validatorId: validator.validatorId,
                 });
 
@@ -47,11 +50,11 @@ function calculateWithdrawalsWithPriority(
     }
 
     // PRIORITY 2: If withdrawal amount remains, withdraw from over-delegated allowed validators
-    if (remainingWithdrawal > 0) {
+    if (remainingWithdrawal > 0n) {
         // Filter to only over-delegated validators and sort by highest over-delegation first
         const overDelegatedValidators = allowedValidators
             .filter((v) => v.isOverDelegated && v.overDelegated > 1)
-            .sort((a, b) => b.overDelegated - a.overDelegated);
+            .sort((a, b) => parseFloat(formatEther(b.overDelegated)) - parseFloat(formatEther(a.overDelegated)));
 
         if (overDelegatedValidators.length === 0) {
             console.log('⚠️  No over-delegated allowed validators found for remaining withdrawal.');
@@ -60,11 +63,12 @@ function calculateWithdrawalsWithPriority(
                 if (remainingWithdrawal <= 0) break;
 
                 // Calculate how much can be withdrawn from this validator
-                const availableWithdrawal = Math.min(validator.overDelegated, remainingWithdrawal);
+                const availableWithdrawal =
+                    remainingWithdrawal > validator.overDelegated ? validator.overDelegated : remainingWithdrawal;
 
-                if (availableWithdrawal > 0.01) {
+                if (availableWithdrawal > 0n) {
                     recommendations.push({
-                        withdrawalAmount: availableWithdrawal,
+                        withdrawalAmount: availableWithdrawal.toString(),
                         validatorId: validator.validatorId,
                     });
 
@@ -74,30 +78,59 @@ function calculateWithdrawalsWithPriority(
         }
     }
 
-    if (remainingWithdrawal > 0) {
-        const totalAvailableFromNotAllowed = notAllowedValidators.reduce((sum, v) => sum + v.currentDelegation, 0);
-        const totalAvailableFromOverDelegated = allowedValidators
-            .filter((v) => v.isOverDelegated && v.overDelegated > 1)
-            .reduce((sum, v) => sum + v.overDelegated, 0);
+    // PRIORITY 3: If still remaining, withdraw from allowed validators with biggest available capacity first
+    if (remainingWithdrawal > 0n) {
+        // Filter to only over-delegated validators and sort by highest over-delegation first
+        const allValidatorsSorted = allowedValidators.sort(
+            (a, b) => parseFloat(formatEther(b.currentDelegation)) - parseFloat(formatEther(a.currentDelegation)),
+        );
 
-        console.log(
-            `\n⚠️  Could not allocate ${remainingWithdrawal.toLocaleString()} S - insufficient available withdrawals`,
+        for (const validator of allValidatorsSorted) {
+            if (remainingWithdrawal <= 0) break;
+
+            // Calculate how much can be withdrawn from this validator
+            const availableWithdrawal =
+                remainingWithdrawal > validator.currentDelegation ? validator.currentDelegation : remainingWithdrawal;
+
+            if (availableWithdrawal > 0n) {
+                recommendations.push({
+                    withdrawalAmount: availableWithdrawal.toString(),
+                    validatorId: validator.validatorId,
+                });
+
+                remainingWithdrawal -= availableWithdrawal;
+            }
+        }
+    }
+
+    // If still remaining, log a warning and return empty recommendations
+    if (remainingWithdrawal > 0n) {
+        console.warn(
+            `⚠️  Unable to withdraw the full amount of ${formatEther(withdrawalAmount)} S. Remaining: ${formatEther(
+                remainingWithdrawal,
+            )} S`,
         );
-        console.log(`   Available from not-allowed validators: ${totalAvailableFromNotAllowed.toLocaleString()} S`);
-        console.log(
-            `   Available from over-delegated validators: ${totalAvailableFromOverDelegated.toLocaleString()} S`,
+        throw new Error(
+            `Unable to withdraw the full amount of ${formatEther(withdrawalAmount)} S. Remaining: ${formatEther(
+                remainingWithdrawal,
+            )} S`,
         );
-        console.log(
-            `   Total available: ${(
-                totalAvailableFromNotAllowed + totalAvailableFromOverDelegated
-            ).toLocaleString()} S`,
+    }
+
+    // double check that all recommendations add up to the requested withdrawal amount
+    const totalWithdrawal = recommendations.reduce((sum, rec) => sum + BigInt(rec.withdrawalAmount), 0n);
+    if (totalWithdrawal !== withdrawalAmount) {
+        throw new Error(
+            `Total withdrawal amount ${formatEther(totalWithdrawal)} S does not match requested amount ${formatEther(
+                withdrawalAmount,
+            )} S`,
         );
     }
 
     return recommendations;
 }
 
-export async function calculateOptimalWithdrawals(withdrawalAmount: number): Promise<WithdrawalRecommendation[]> {
+export async function calculateOptimalWithdrawals(withdrawalAmount: bigint): Promise<WithdrawalRecommendation[]> {
     try {
         // Load validator boost weights
         const boostWeights = await loadValidatorBoostData();
@@ -137,16 +170,16 @@ export async function calculateOptimalWithdrawals(withdrawalAmount: number): Pro
         const notAllowedValidators: ValidatorAnalysis[] = [];
 
         for (const delegation of delegationData) {
-            const currentDelegation = parseFloat(delegation.assetsDelegated);
+            const currentDelegation = parseEther(delegation.assetsDelegated);
 
             if (!ALLOWED_VALIDATORS.includes(delegation.validatorId)) {
                 // Not-allowed validators should be withdrawn to 0
-                if (currentDelegation > 0) {
+                if (currentDelegation > 0n) {
                     // Include ALL delegations from not-allowed validators, even tiny amounts
                     notAllowedValidators.push({
                         validatorId: delegation.validatorId,
                         currentDelegation,
-                        expectedDelegation: 0, // Should be 0
+                        expectedDelegation: 0n, // Should be 0
                         overDelegated: currentDelegation, // All delegation is over-delegation
                         isOverDelegated: true,
                     });
@@ -154,15 +187,15 @@ export async function calculateOptimalWithdrawals(withdrawalAmount: number): Pro
                 continue;
             }
 
-            const expectedDelegation = expectedDelegations.get(delegation.validatorId) || 0;
+            const expectedDelegation = parseEther(expectedDelegations.get(delegation.validatorId)?.toString() || '0');
             const difference = currentDelegation - expectedDelegation;
-            const isOverDelegated = difference > 1; // Consider over-delegated if difference > 1 S
+            const isOverDelegated = difference > parseEther('1'); // Consider over-delegated if difference > 1 S
 
             validatorAnalyses.push({
                 validatorId: delegation.validatorId,
                 currentDelegation,
                 expectedDelegation,
-                overDelegated: Math.max(0, difference),
+                overDelegated: isOverDelegated ? difference : 0n,
                 isOverDelegated,
             });
         }

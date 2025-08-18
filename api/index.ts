@@ -52,6 +52,12 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
     });
 });
 
+// // Start server
+// app.listen(3000, () => {
+//     console.log(`🚀 stS helper running on port 3000`);
+//     console.log(`📊 API endpoints available at http://localhost:3000/api`);
+// });
+
 // Export Vercel handler
 export default (req: VercelRequest, res: VercelResponse) => {
     return app(req as any, res as any);
