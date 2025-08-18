@@ -136,16 +136,14 @@ export async function calculateOptimalWithdrawals(withdrawalAmount: bigint): Pro
         const boostWeights = await loadValidatorBoostData();
 
         if (boostWeights.length === 0) {
-            console.log('❌ No boost weight data found. Please run track-validator-delegation-boost.ts first.');
-            return [];
+            throw new Error('No boost weight data found.');
         }
 
         // Get delegation data
         const delegationData = await getDelegationData();
 
         if (delegationData.length === 0) {
-            console.log('❌ No delegation data found.');
-            return [];
+            throw new Error('No delegation data found.');
         }
 
         // Calculate total delegation
