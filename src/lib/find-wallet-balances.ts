@@ -181,10 +181,18 @@ async function run(): Promise<void> {
         const tokenInfoPromises = allTokens.map((token) => getTokenInfo(token));
         const tokenInfos = await Promise.all(tokenInfoPromises);
 
-        const tokenInfoMap = new Map(allTokens.map((token, index) => [token, tokenInfos[index]]));
-
-        // Array to store validator balances
+        const tokenInfoMap = new Map(allTokens.map((token, index) => [token, tokenInfos[index]])); // Array to store validator balances and sources
         const validatorBalances = new Map<string, number>();
+        const validatorSources = new Map<
+            string,
+            {
+                directTokens: { [symbol: string]: number };
+                poolBalances: number;
+                totalWallets: number;
+                isGrouped: boolean;
+                groupMembers?: string[];
+            }
+        >();
 
         // Get stS conversion rate
         const stsRate = await getStSRate();
@@ -192,6 +200,8 @@ async function run(): Promise<void> {
         // First pass: collect all balances per validator
         for (const [validatorId, wallets] of Object.entries(validatorMapping)) {
             let validatorTotalStS = 0;
+            let totalDirectTokens: { [symbol: string]: number } = {};
+            let totalPoolBalances = 0;
 
             for (const wallet of wallets) {
                 // Get direct token balances
@@ -208,7 +218,12 @@ async function run(): Promise<void> {
 
                     if (tokenInfo) {
                         const formattedBalance = formatUnits(balance, tokenInfo.decimals as number);
-                        totalCombinedBalance += parseFloat(formattedBalance);
+                        const balanceNum = parseFloat(formattedBalance);
+                        totalCombinedBalance += balanceNum;
+
+                        const symbol = tokenInfo.symbol as string;
+                        if (!totalDirectTokens[symbol]) totalDirectTokens[symbol] = 0;
+                        totalDirectTokens[symbol] += balanceNum;
                     }
                 }
 
@@ -231,16 +246,22 @@ async function run(): Promise<void> {
                     }
 
                     totalCombinedBalance += totalStSInPools;
+                    totalPoolBalances += totalStSInPools;
                 } catch (error) {
-                    console.error(`    ❌ Error fetching pool data for ${wallet}:`, error);
+                    console.error(`Error fetching pool data for ${wallet}:`, error);
                 }
 
                 validatorTotalStS += totalCombinedBalance;
             }
 
             validatorBalances.set(validatorId, validatorTotalStS);
+            validatorSources.set(validatorId, {
+                directTokens: totalDirectTokens,
+                poolBalances: totalPoolBalances,
+                totalWallets: wallets.length,
+                isGrouped: false,
+            });
         }
-
         const groupBalances = new Map<number, number>();
 
         // Calculate total balances for each group
@@ -255,19 +276,54 @@ async function run(): Promise<void> {
             groupBalances.set(groupId, groupTotalStS);
         });
 
-        // Distribute group balances evenly among group members
+        // Distribute group balances evenly among group members and update sources
         VALIDATOR_GROUPS.forEach((group, groupId) => {
             const groupBalance = groupBalances.get(groupId) || 0;
             const avgBalance = groupBalance / group.length;
 
+            // Collect combined sources for the group
+            let combinedDirectTokens: { [symbol: string]: number } = {};
+            let combinedPoolBalances = 0;
+            let totalWallets = 0;
+
+            group.forEach((validatorId) => {
+                const sources = validatorSources.get(validatorId);
+                if (sources) {
+                    Object.entries(sources.directTokens).forEach(([symbol, amount]) => {
+                        if (!combinedDirectTokens[symbol]) combinedDirectTokens[symbol] = 0;
+                        combinedDirectTokens[symbol] += amount;
+                    });
+                    combinedPoolBalances += sources.poolBalances;
+                    totalWallets += sources.totalWallets;
+                }
+            });
+
+            // Distribute evenly among group members
+            const avgDirectTokens: { [symbol: string]: number } = {};
+            Object.entries(combinedDirectTokens).forEach(([symbol, amount]) => {
+                avgDirectTokens[symbol] = amount / group.length;
+            });
+
             group.forEach((validatorId) => {
                 validatorBalances.set(validatorId, avgBalance);
+                validatorSources.set(validatorId, {
+                    directTokens: avgDirectTokens,
+                    poolBalances: combinedPoolBalances / group.length,
+                    totalWallets: Math.round(totalWallets / group.length),
+                    isGrouped: true,
+                    groupMembers: group,
+                });
             });
         });
-        console.log();
 
         // Calculate total stS across all validators for weight calculation
         const totalStS = Array.from(validatorBalances.values()).reduce((sum, balance) => sum + balance, 0);
+
+        console.log('\n📈 FINAL VALIDATOR ANALYSIS');
+        console.log('============================');
+        console.log(`🏆 Total stS across all validators: ${totalStS.toLocaleString()} stS`);
+        console.log(`💎 Total S equivalent: ${(totalStS * stsRate).toLocaleString()} S`);
+        console.log(`💱 Conversion rate: ${stsRate.toFixed(6)} S per stS\n`);
 
         const results: ValidatorBoostData[] = [];
         const csvData: string[] = ['validatorid,total_sts_amount,total_s_amount,weight'];
@@ -278,6 +334,52 @@ async function run(): Promise<void> {
         for (const [validatorId, stsBalance] of sortedValidators) {
             const sBalance = stsBalance * stsRate;
             const weight = totalStS > 0 ? (stsBalance / totalStS) * 100 : 0;
+            const sources = validatorSources.get(validatorId);
+
+            console.log(`📊 Validator ${validatorId}:`);
+            console.log(`   💰 Total stS Balance: ${stsBalance.toLocaleString()} stS`);
+            console.log(`   💎 S Equivalent: ${sBalance.toLocaleString()} S`);
+            console.log(`   ⚖️  Weight: ${weight.toFixed(4)}%`);
+
+            if (sources?.isGrouped) {
+                console.log(
+                    `   👥 Grouped with: ${
+                        sources.groupMembers?.filter((id) => id !== validatorId).join(', ') || 'none'
+                    }`,
+                );
+            }
+            console.log(`   🏠 Wallets: ${sources?.totalWallets || 0}`);
+
+            // Show source breakdown
+            console.log('   📋 Source Breakdown:');
+            if (sources) {
+                // Direct token balances
+                const hasDirectTokens = Object.values(sources.directTokens).some((amount) => amount > 0);
+                if (hasDirectTokens) {
+                    Object.entries(sources.directTokens).forEach(([symbol, amount]) => {
+                        if (amount > 0) {
+                            const percentage = stsBalance > 0 ? (amount / stsBalance) * 100 : 0;
+                            console.log(
+                                `      💰 ${symbol}: ${amount.toLocaleString()} stS (${percentage.toFixed(2)}%)`,
+                            );
+                        }
+                    });
+                }
+
+                // Pool balances
+                if (sources.poolBalances > 0) {
+                    const poolPercentage = stsBalance > 0 ? (sources.poolBalances / stsBalance) * 100 : 0;
+                    console.log(
+                        `      🏊 Pools: ${sources.poolBalances.toLocaleString()} stS (${poolPercentage.toFixed(2)}%)`,
+                    );
+                }
+
+                // If no sources, show zero
+                if (!hasDirectTokens && sources.poolBalances === 0) {
+                    console.log(`      📭 No balance sources found`);
+                }
+            }
+            console.log('');
 
             results.push({
                 validatorId,
@@ -300,9 +402,9 @@ async function run(): Promise<void> {
             }
 
             fs.writeFileSync(fileName, csvContent, 'utf8');
-            console.log(`📄 Results written to ${fileName}`);
+            console.log(`✅ Results written to ${fileName} (${results.length} validators)`);
         } catch (error) {
-            console.error('Error writing CSV file:', error);
+            console.error('❌ Error writing CSV file:', error);
         }
     } catch (error) {
         core.setFailed(error as Error);

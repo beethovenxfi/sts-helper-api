@@ -23,12 +23,12 @@ app.get('/', (req, res) => {
         version: '1.0.0',
         description: 'API for validator staking/unstaking recommendations and delegation boost calculations',
         endpoints: {
-            unstakeRecommendation: `${baseUrl}/api/unstake-recommendation?amount=1000000`,
+            unstakeRecommendation: `${baseUrl}/api/unstake-recommendation?amount=1000000000000000000`,
             stakeRecommendation: `${baseUrl}/api/stake-recommendation`,
         },
         documentation: {
             '/api/unstake-recommendation?amount=X':
-                'Calculate optimal withdrawal recommendations for the specified amount',
+                'Calculate optimal withdrawal recommendations for the specified amount in wei',
             '/api/stake-recommendation': 'Get delegation analysis and staking recommendations',
         },
         timestamp: new Date().toISOString(),
