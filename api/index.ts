@@ -2,6 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import express from 'express';
 import routes from '../src/api/routes';
 import cors from 'cors';
+import path from 'path';
 
 // Create Express app
 const app = express();
@@ -10,6 +11,9 @@ const app = express();
 app.use(cors()); // Enable CORS
 app.use(express.json({ limit: '10mb' })); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Parse URL-encoded bodies
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, '../public')));
 
 // Routes
 app.use('/api', routes);
@@ -52,7 +56,7 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
     });
 });
 
-// // Start server
+// Start server
 // app.listen(3000, () => {
 //     console.log(`🚀 stS helper running on port 3000`);
 //     console.log(`📊 API endpoints available at http://localhost:3000/api`);

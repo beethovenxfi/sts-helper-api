@@ -3,55 +3,541 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Validator Withdraw API</title>
+    <title>Stake Recommendation Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 800px;
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
             margin: 0 auto;
-            padding: 2rem;
-            line-height: 1.6;
+            padding: 20px;
+            background-color: #f5f5f5;
         }
-        .endpoint {
-            background: #f5f5f5;
-            padding: 1rem;
-            margin: 1rem 0;
+        .container {
+            background: white;
             border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .endpoint code {
-            background: #e0e0e0;
-            padding: 0.2rem 0.4rem;
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+            border-left: 4px solid #007bff;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .chart-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .chart-wrapper {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .chart-title {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .recommendations {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .recommendation-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .recommendation-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            padding: 8px;
             border-radius: 4px;
         }
-        .api-link {
-            color: #0070f3;
-            text-decoration: none;
+        .stake-more {
+            background-color: #d4edda;
+            color: #155724;
+            border-left: 4px solid #28a745;
         }
-        .api-link:hover {
-            text-decoration: underline;
+        .avoid-staking {
+            background-color: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+        .over-delegated {
+            background-color: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+        .validator-item {
+            background: #f8f9fa;
+            margin: 5px 0;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .validator-id {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .loading {
+            text-align: center;
+            padding: 50px;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0 auto;
+            display: block;
+        }
+        button:hover {
+            background-color: #0056b3;
         }
     </style>
 </head>
 <body>
-    <h1>🚀 stS Helper API</h1>
-    
-    <p>An API for validator staking/unstaking recommendations.</p>
-    
-    <h2>Available Endpoints</h2>
-    
-    <div class="endpoint">
-        <h3><code>GET</code> <a href="/api/unstake-recommendation?amount=1000000000000000000" class="api-link">/api/unstake-recommendation</a></h3>
-        <p>Calculate optimal withdrawal recommendations</p>
-        <p><strong>Parameters:</strong> <code>amount</code> - The amount to unstake</p>
+    <div class="header">
+        <h1>Stake Recommendation Dashboard</h1>
+        <button onclick="loadData()">Refresh Data</button>
     </div>
-    
-    <div class="endpoint">
-        <h3><code>GET</code> <a href="/api/stake-recommendation" class="api-link">/api/stake-recommendation</a></h3>
-        <p>Get delegation analysis and staking recommendations</p>
+
+    <div id="loading" class="loading">
+        <p>Loading data...</p>
     </div>
-    
-    <hr>
-    
-    <p><small>Built with ❤️ for Beets</small></p>
+
+    <div id="error" class="error" style="display: none;">
+        <p>Error loading data. Please try again.</p>
+    </div>
+
+    <div id="dashboard" style="display: none;">
+        <div class="container">
+            <h2>Summary</h2>
+            <div class="summary-stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalDelegation">-</div>
+                    <div class="stat-label">Total Delegation</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalStsBalance">-</div>
+                    <div class="stat-label">Total Tracked Validator stS Balances</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-wrapper">
+                <div class="chart-title">Delegation Analysis</div>
+                <canvas id="delegationBarChart"></canvas>
+            </div>
+            <div class="chart-wrapper">
+                <div class="chart-title">Boost Weight Distribution</div>
+                <canvas id="boostWeightChart"></canvas>
+            </div>
+            <div class="chart-wrapper">
+                <div class="chart-title">Tracked stS Balances</div>
+                <canvas id="stsBalanceChart"></canvas>
+            </div>
+        </div>
+
+        <div class="container">
+            <h2>Recommendations</h2>
+            <div class="recommendations">
+                <div class="recommendation-card">
+                    <div class="recommendation-title stake-more">Recommended for Staking</div>
+                    <div id="stakeMoreList"></div>
+                </div>
+                <div class="recommendation-card">
+                    <div class="recommendation-title avoid-staking">Avoid Staking</div>
+                    <div id="avoidStakingList"></div>
+                </div>
+                <div class="recommendation-card">
+                    <div class="recommendation-title over-delegated">Over-Delegated Validators</div>
+                    <div id="overDelegatedList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let barChart, boostChart, stsChart;
+
+        async function loadData() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'none';
+
+            try {
+                const response = await fetch('/api/stake-recommendation');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                displayData(data.data);
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+            }
+        }
+
+        function displayData(data) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+
+            // Calculate total stS balance from all validators
+            const totalStsBalance = [
+                ...data.validators.overDelegated,
+                ...data.validators.underDelegated,
+                ...data.validators.balanced,
+                ...data.validators.notAllowed
+            ].reduce((sum, validator) => sum + (validator.stsBalance || 0), 0);
+
+            // Update summary stats
+            document.getElementById('totalDelegation').textContent = formatNumber(data.summary.totalDelegation);
+            document.getElementById('totalStsBalance').textContent = formatNumber(totalStsBalance);
+
+            // Create charts
+            createDelegationBarChart(data.validators);
+            createBoostWeightChart(data.validators);
+            createStsBalanceChart(data.validators);
+
+            // Display recommendations
+            displayRecommendations(data.recommendations, data.validators);
+        }
+
+
+        function createDelegationBarChart(validators) {
+            const ctx = document.getElementById('delegationBarChart').getContext('2d');
+            
+            if (barChart) {
+                barChart.destroy();
+            }
+
+            // Get top 10 validators by delegation amount for visualization
+            const allValidators = [
+                ...validators.overDelegated,
+                ...validators.underDelegated,
+                ...validators.balanced
+            ].slice(0, 10);
+
+            const labels = allValidators.map(v => v.validatorId);
+            const currentDelegation = allValidators.map(v => v.currentDelegation || 0);
+            const expectedDelegation = allValidators.map(v => v.expectedDelegation || 0);
+
+            barChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Current Delegation',
+                            data: currentDelegation,
+                            backgroundColor: '#007bff',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Expected Delegation',
+                            data: expectedDelegation,
+                            backgroundColor: '#28a745',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            display: false
+                        },
+                        x: {
+                            title: {
+                                display: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y;
+                                    if (value === null || value === undefined) {
+                                        return `${label}: 0 S`;
+                                    }
+                                    return `${label}: ${formatNumber(value)} S`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createBoostWeightChart(validators) {
+            const ctx = document.getElementById('boostWeightChart').getContext('2d');
+            
+            if (boostChart) {
+                boostChart.destroy();
+            }
+
+            // Get validators with boost weights
+            const allValidators = [
+                ...validators.overDelegated,
+                ...validators.underDelegated,
+                ...validators.balanced
+            ].filter(v => v.boostWeight && v.boostWeight > 0);
+
+            if (allValidators.length === 0) {
+                // Show message if no boost weights
+                ctx.canvas.parentElement.innerHTML = '<div class="chart-title">Boost Weight Distribution</div><div style="text-align: center; padding: 50px; color: #666;">No boost weights available</div>';
+                return;
+            }
+
+            // Sort by boost weight and take top 10
+            allValidators.sort((a, b) => (b.boostWeight || 0) - (a.boostWeight || 0));
+            const topValidators = allValidators.slice(0, 10);
+
+            const labels = topValidators.map(v => v.validatorId);
+            const boostWeights = topValidators.map(v => v.boostWeight || 0);
+            
+            // Generate colors for each validator
+            const colors = [
+                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+                '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#36A2EB'
+            ];
+
+            boostChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: boostWeights,
+                        backgroundColor: colors.slice(0, topValidators.length),
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Validator ${context.label}: ${context.parsed} boost weight`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createStsBalanceChart(validators) {
+            const ctx = document.getElementById('stsBalanceChart').getContext('2d');
+            
+            if (stsChart) {
+                stsChart.destroy();
+            }
+
+            // Get validators with stS balance
+            const allValidators = [
+                ...validators.overDelegated,
+                ...validators.underDelegated,
+                ...validators.balanced
+            ].filter(v => v.stsBalance && v.stsBalance > 0);
+
+            if (allValidators.length === 0) {
+                // Show message if no stS balances
+                ctx.canvas.parentElement.innerHTML = '<div class="chart-title">Tracked stS Balances</div><div style="text-align: center; padding: 50px; color: #666;">No stS balances available</div>';
+                return;
+            }
+
+            // Sort by stS balance and take top 10
+            allValidators.sort((a, b) => (b.stsBalance || 0) - (a.stsBalance || 0));
+            const topValidators = allValidators.slice(0, 10);
+
+            const labels = topValidators.map(v => v.validatorId);
+            const stsBalances = topValidators.map(v => v.stsBalance || 0);
+            
+            // Generate colors for each validator
+            const colors = [
+                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+                '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#36A2EB'
+            ];
+
+            stsChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: stsBalances,
+                        backgroundColor: colors.slice(0, topValidators.length),
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Validator ${context.label}: ${formatNumber(context.parsed)} stS`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function displayRecommendations(recommendations, validators) {
+            // Helper function to find validator details
+            function findValidatorDetails(validatorId) {
+                const allValidators = [
+                    ...validators.overDelegated,
+                    ...validators.underDelegated,
+                    ...validators.balanced
+                ];
+                return allValidators.find(v => v.validatorId === validatorId);
+            }
+
+            // Display stake more recommendations
+            const stakeMoreList = document.getElementById('stakeMoreList');
+            stakeMoreList.innerHTML = '';
+            
+            if (recommendations.stakeMore.length === 0) {
+                stakeMoreList.innerHTML = '<div class="validator-item">No validators available for staking</div>';
+            } else {
+                recommendations.stakeMore.forEach(rec => {
+                    const validatorDetails = findValidatorDetails(rec.validatorId);
+                    const item = document.createElement('div');
+                    item.className = 'validator-item';
+                    item.innerHTML = `
+                        <div class="validator-id">Validator ${rec.validatorId}</div>
+                        <div><strong>Recommended Amount:</strong> ${formatNumber(rec.recommendedAmount)}</div>
+                        <div><strong>Priority:</strong> ${rec.priority}</div>
+                        <div><strong>Reason:</strong> ${rec.reason}</div>
+                        ${validatorDetails ? `
+                            <div><strong>Current Delegation:</strong> ${formatNumber(validatorDetails.currentDelegation)}</div>
+                            <div><strong>Expected Delegation:</strong> ${formatNumber(validatorDetails.expectedDelegation)}</div>
+                            <div><strong>Remaining Capacity:</strong> ${formatNumber(validatorDetails.remainingCapacity)}</div>
+                        ` : ''}
+                    `;
+                    stakeMoreList.appendChild(item);
+                });
+            }
+
+            // Display avoid staking recommendations
+            const avoidStakingList = document.getElementById('avoidStakingList');
+            avoidStakingList.innerHTML = '';
+            
+            if (recommendations.avoidStaking.length === 0) {
+                avoidStakingList.innerHTML = '<div class="validator-item">No validators to avoid</div>';
+            } else {
+                recommendations.avoidStaking.forEach(rec => {
+                    const validatorDetails = findValidatorDetails(rec.validatorId);
+                    const item = document.createElement('div');
+                    item.className = 'validator-item';
+                    item.innerHTML = `
+                        <div class="validator-id">Validator ${rec.validatorId}</div>
+                        <div><strong>Reason:</strong> ${rec.reason}</div>
+                        ${validatorDetails ? `
+                            <div><strong>Current Delegation:</strong> ${formatNumber(validatorDetails.currentDelegation)}</div>
+                            <div><strong>Expected Delegation:</strong> ${formatNumber(validatorDetails.expectedDelegation)}</div>
+                            <div><strong>Remaining Capacity:</strong> ${formatNumber(validatorDetails.remainingCapacity)}</div>
+                        ` : ''}
+                    `;
+                    avoidStakingList.appendChild(item);
+                });
+            }
+
+            // Display over-delegated validators
+            const overDelegatedList = document.getElementById('overDelegatedList');
+            overDelegatedList.innerHTML = '';
+            
+            if (validators.overDelegated.length === 0) {
+                overDelegatedList.innerHTML = '<div class="validator-item">No over-delegated validators</div>';
+            } else {
+                validators.overDelegated.slice(0, 10).forEach(validator => {
+                    const item = document.createElement('div');
+                    item.className = 'validator-item';
+                    item.innerHTML = `
+                        <div class="validator-id">Validator ${validator.validatorId}</div>
+                        <div><strong>Over-delegated by:</strong> ${formatNumber(Math.abs(validator.difference))}</div>
+                        <div><strong>Current Delegation:</strong> ${formatNumber(validator.currentDelegation)}</div>
+                        <div><strong>Expected Delegation:</strong> ${formatNumber(validator.expectedDelegation)}</div>
+                        <div><strong>Remaining Capacity:</strong> ${formatNumber(validator.remainingCapacity)}</div>
+                        <div><strong>Status:</strong> ${validator.status}</div>
+                    `;
+                    overDelegatedList.appendChild(item);
+                });
+            }
+        }
+
+        function formatNumber(num) {
+            if (typeof num === 'string') {
+                num = parseFloat(num);
+            }
+            if (num >= 1e18) {
+                return (num / 1e18).toFixed(2) + ' ETH';
+            } else if (num >= 1e6) {
+                return (num / 1e6).toFixed(2) + 'M';
+            } else if (num >= 1e3) {
+                return (num / 1e3).toFixed(2) + 'K';
+            }
+            return num.toLocaleString();
+        }
+
+        // Load data when page loads
+        window.onload = loadData;
+    </script>
 </body>
 </html>
