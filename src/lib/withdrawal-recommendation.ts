@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { ALLOWED_VALIDATORS } from './constants';
+import { ALLOWED_VALIDATORS, BEETS_VALIDATOR_ID } from './constants';
 import { calculateExpectedDelegations, getDelegationData, loadValidatorBoostData, ValidatorBoostData } from './helper';
 import { formatEther, parseEther } from 'viem/utils';
 
@@ -199,8 +199,7 @@ export async function calculateOptimalWithdrawals(withdrawalAmount: bigint): Pro
         }
 
         // remove our own validator from withdrawals
-        const ourValidatorId = '44';
-        const ourValidatorIndex = validatorAnalyses.findIndex((r) => r.validatorId === ourValidatorId);
+        const ourValidatorIndex = validatorAnalyses.findIndex((r) => r.validatorId === BEETS_VALIDATOR_ID);
         if (ourValidatorIndex !== -1) {
             validatorAnalyses.splice(ourValidatorIndex, 1);
         }

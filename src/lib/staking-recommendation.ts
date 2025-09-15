@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { createPublicClient, http, formatUnits, getAddress } from 'viem';
 import { sonic } from 'viem/chains';
-import { API_URL, ALLOWED_VALIDATORS, SFC_ADDRESS } from './constants';
+import { API_URL, ALLOWED_VALIDATORS, SFC_ADDRESS, BEETS_VALIDATOR_ID } from './constants';
 import { calculateExpectedDelegations, getDelegationData, loadValidatorBoostData, ValidatorBoostData } from './helper';
 
 // SFC (Staker Faucet Contract) address for Sonic chain
@@ -163,8 +163,11 @@ export async function getStakingRecommendation() {
 
         for (const delegation of delegationData) {
             const currentDelegation = parseFloat(delegation.assetsDelegated);
-            const expectedDelegation = expectedDelegations.get(delegation.validatorId) || 0;
             const validatorInfo = validatorInfos.get(delegation.validatorId);
+            const expectedDelegation =
+                delegation.validatorId === BEETS_VALIDATOR_ID
+                    ? validatorInfo?.maxDelegation || 0
+                    : expectedDelegations.get(delegation.validatorId) || 0;
             const maxDelegation = validatorInfo?.maxDelegation || 0;
             const totalStake = validatorInfo?.receivedStake || 0;
             const remainingCapacity = validatorInfo?.remainingCapacity || 0;
