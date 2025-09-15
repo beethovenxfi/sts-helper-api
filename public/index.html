@@ -257,7 +257,7 @@
                 ...validators.overDelegated,
                 ...validators.underDelegated,
                 ...validators.balanced
-            ].slice(0, 10);
+            ].slice(0, 20);
 
             const labels = allValidators.map(v => v.validatorId);
             const currentDelegation = allValidators.map(v => v.currentDelegation || 0);
