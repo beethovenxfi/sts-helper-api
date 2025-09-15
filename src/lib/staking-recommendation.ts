@@ -93,7 +93,7 @@ async function getValidatorInfo(validatorId: string): Promise<ValidatorInfo | nu
             validatorInfo;
 
         const receivedStakeS = parseFloat(formatUnits(receivedStake, 18));
-        const maxDelegation = selfStakeS * 16;
+        const maxDelegation = selfStakeS * 15; // Max delegation is 15x self-stake
         const remainingCapacity = Math.max(0, maxDelegation - receivedStakeS);
         const canReceiveDelegation = remainingCapacity >= 500000 && Number(status) === 0; // Status 0 = active AND at least 500k capacity
 
