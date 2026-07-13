@@ -1,6 +1,6 @@
 export const API_URL = 'https://backend-v3.beets-ftm-node.com/graphql';
 
-export const ALLOWED_VALIDATORS = ['13', '14', '15', '16', '17', '18', '23', '29', '30', '39', '44', '45'];
+export const ALLOWED_VALIDATORS = ['13', '14', '15', '16', '17', '18', '23', '29', '30', '39', '44', '45', '51'];
 
 export const BEETS_VALIDATOR_ID = '44';
 
