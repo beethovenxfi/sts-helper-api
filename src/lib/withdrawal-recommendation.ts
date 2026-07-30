@@ -16,25 +16,30 @@ interface ValidatorAnalysis {
 }
 
 // Withdraw up to `available(validator)` from each validator (highest available first)
-// until the remaining amount is covered. Returns the amount still uncovered.
+// until the remaining amount is covered. `consumed` tracks what earlier priorities already
+// took from a validator, so the same funds are never withdrawn twice. Returns the amount
+// still uncovered.
 function withdrawFrom(
     validators: ValidatorAnalysis[],
     available: (v: ValidatorAnalysis) => bigint,
     remainingWithdrawal: bigint,
-    recommendations: WithdrawalRecommendation[],
+    consumed: Map<string, bigint>,
 ): bigint {
-    const sorted = [...validators].sort((a, b) => (available(b) > available(a) ? 1 : -1));
+    const capacity = (v: ValidatorAnalysis) => {
+        const left = available(v) - (consumed.get(v.validatorId) || 0n);
+        return left > 0n ? left : 0n;
+    };
+
+    const sorted = [...validators].sort((a, b) => (capacity(b) > capacity(a) ? 1 : -1));
 
     for (const validator of sorted) {
         if (remainingWithdrawal <= 0n) break;
 
-        const availableWithdrawal = remainingWithdrawal > available(validator) ? available(validator) : remainingWithdrawal;
+        const validatorCapacity = capacity(validator);
+        const availableWithdrawal = remainingWithdrawal > validatorCapacity ? validatorCapacity : remainingWithdrawal;
 
         if (availableWithdrawal > 0n) {
-            recommendations.push({
-                withdrawalAmount: availableWithdrawal.toString(),
-                validatorId: validator.validatorId,
-            });
+            consumed.set(validator.validatorId, (consumed.get(validator.validatorId) || 0n) + availableWithdrawal);
 
             remainingWithdrawal -= availableWithdrawal;
         }
@@ -46,24 +51,31 @@ function withdrawFrom(
 function calculateWithdrawalsWithPriority(
     notAllowedValidators: ValidatorAnalysis[],
     allowedValidators: ValidatorAnalysis[],
+    beetsValidator: ValidatorAnalysis | undefined,
     withdrawalAmount: bigint,
 ): WithdrawalRecommendation[] {
-    const recommendations: WithdrawalRecommendation[] = [];
+    // Amount already assigned per validator, in priority order
+    const consumed = new Map<string, bigint>();
     let remaining = withdrawalAmount;
 
     // PRIORITY 1: Withdraw from not-allowed validators first (withdraw to 0)
-    remaining = withdrawFrom(notAllowedValidators, (v) => v.currentDelegation, remaining, recommendations);
+    remaining = withdrawFrom(notAllowedValidators, (v) => v.currentDelegation, remaining, consumed);
 
     // PRIORITY 2: Withdraw the over-delegated portion from allowed validators
     remaining = withdrawFrom(
         allowedValidators.filter((v) => v.isOverDelegated),
         (v) => v.overDelegated,
         remaining,
-        recommendations,
+        consumed,
     );
 
     // PRIORITY 3: Withdraw from allowed validators with the biggest delegation first
-    remaining = withdrawFrom(allowedValidators, (v) => v.currentDelegation, remaining, recommendations);
+    remaining = withdrawFrom(allowedValidators, (v) => v.currentDelegation, remaining, consumed);
+
+    // PRIORITY 4: Our own validator as a last resort, once every other source is drained
+    if (beetsValidator) {
+        remaining = withdrawFrom([beetsValidator], (v) => v.currentDelegation, remaining, consumed);
+    }
 
     if (remaining > 0n) {
         throw new Error(
@@ -72,6 +84,11 @@ function calculateWithdrawalsWithPriority(
             )} S`,
         );
     }
+
+    // One entry per validator, in the order the priorities consumed them
+    const recommendations: WithdrawalRecommendation[] = [...consumed.entries()]
+        .filter(([, amount]) => amount > 0n)
+        .map(([validatorId, amount]) => ({ withdrawalAmount: amount.toString(), validatorId }));
 
     // double check that all recommendations add up to the requested withdrawal amount
     const totalWithdrawal = recommendations.reduce((sum, rec) => sum + BigInt(rec.withdrawalAmount), 0n);
@@ -92,12 +109,24 @@ export async function calculateOptimalWithdrawals(withdrawalAmount: bigint): Pro
     // Analyze each validator - including not-allowed ones for withdrawal
     const allowedValidators: ValidatorAnalysis[] = [];
     const notAllowedValidators: ValidatorAnalysis[] = [];
+    let beetsValidator: ValidatorAnalysis | undefined;
 
     for (const validatorId of allValidatorIds) {
         const currentDelegation = parseEther(delegations.get(validatorId) || '0');
 
-        // our own validator is excluded from withdrawals
-        if (validatorId === BEETS_VALIDATOR_ID) continue;
+        // our own validator is only withdrawn from as a last resort
+        if (validatorId === BEETS_VALIDATOR_ID) {
+            if (currentDelegation > 0n) {
+                beetsValidator = {
+                    validatorId,
+                    currentDelegation,
+                    expectedDelegation: currentDelegation,
+                    overDelegated: 0n,
+                    isOverDelegated: false,
+                };
+            }
+            continue;
+        }
 
         if (!ALLOWED_VALIDATORS.includes(validatorId)) {
             // Not-allowed validators should be withdrawn to 0
@@ -127,5 +156,5 @@ export async function calculateOptimalWithdrawals(withdrawalAmount: bigint): Pro
     }
 
     // Calculate withdrawal recommendations - prioritize not-allowed validators first
-    return calculateWithdrawalsWithPriority(notAllowedValidators, allowedValidators, withdrawalAmount);
+    return calculateWithdrawalsWithPriority(notAllowedValidators, allowedValidators, beetsValidator, withdrawalAmount);
 }
