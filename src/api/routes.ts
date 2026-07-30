@@ -18,9 +18,14 @@ router.get('/unstake-recommendation', async (req, res) => {
             });
         }
 
-        const withdrawalAmount = BigInt(amount as string);
+        let withdrawalAmount: bigint;
+        try {
+            withdrawalAmount = BigInt(amount as string);
+        } catch {
+            withdrawalAmount = 0n;
+        }
 
-        if (!withdrawalAmount || withdrawalAmount <= 0) {
+        if (withdrawalAmount <= 0n) {
             return res.status(400).json({
                 error: 'Invalid withdrawal amount. Must be a positive number.',
                 provided: amount,
@@ -45,6 +50,26 @@ router.get('/unstake-recommendation', async (req, res) => {
     }
 });
 
+type AnalyzedValidator = Awaited<ReturnType<typeof getStakingRecommendation>>['allValidators'][number];
+
+// Shared response shape for validator lists, sorted by validator id descending
+function formatValidators(validators: AnalyzedValidator[]) {
+    return validators
+        .map((v) => ({
+            validatorId: v.validatorId,
+            currentDelegation: v.currentDelegation,
+            expectedDelegation: v.expectedDelegation,
+            difference: v.difference,
+            stsBalance: v.stsBalance || 0,
+            boostWeight: v.boostWeight || 0,
+            maxDelegation: v.maxDelegation,
+            remainingCapacity: v.remainingCapacity,
+            canReceiveDelegation: v.canReceiveDelegation,
+            status: v.status,
+        }))
+        .sort((a, b) => parseFloat(b.validatorId) - parseFloat(a.validatorId));
+}
+
 // Endpoint to get current delegation analysis and staking recommendations
 router.get('/stake-recommendation', async (req, res) => {
     try {
@@ -64,7 +89,7 @@ router.get('/stake-recommendation', async (req, res) => {
                             validatorId: v.validatorId,
                             recommendedAmount: Math.abs(v.difference),
                             reason: 'Under-delegated with available capacity',
-                            priority: v.boostWeight || 0 > 0 ? 'high' : 'medium',
+                            priority: (v.boostWeight || 0) > 0 ? 'high' : 'medium',
                         }))
                         .sort((a, b) => b.recommendedAmount - a.recommendedAmount),
                     avoidStaking: analysisData.validators.underDelegated
@@ -75,57 +100,18 @@ router.get('/stake-recommendation', async (req, res) => {
                         })),
                 },
                 validators: {
-                    overDelegated: analysisData.validators.overDelegated
-                        .map((v) => ({
-                            validatorId: v.validatorId,
-                            currentDelegation: v.currentDelegation,
-                            expectedDelegation: v.expectedDelegation,
-                            difference: v.difference,
-                            stsBalance: v.stsBalance || 0,
-                            boostWeight: v.boostWeight || 0,
-                            maxDelegation: v.maxDelegation,
-                            remainingCapacity: v.remainingCapacity,
-                            canReceiveDelegation: v.canReceiveDelegation,
-                            status: v.status,
-                        }))
-                        .sort((a, b) => parseFloat(b.validatorId) - parseFloat(a.validatorId)),
-                    underDelegated: analysisData.validators.underDelegated
-                        .map((v) => ({
-                            validatorId: v.validatorId,
-                            currentDelegation: v.currentDelegation,
-                            expectedDelegation: v.expectedDelegation,
-                            difference: v.difference,
-                            stsBalance: v.stsBalance || 0,
-                            boostWeight: v.boostWeight || 0,
-                            maxDelegation: v.maxDelegation,
-                            remainingCapacity: v.remainingCapacity,
-                            canReceiveDelegation: v.canReceiveDelegation,
-                            status: v.status,
-                        }))
-                        .sort((a, b) => parseFloat(b.validatorId) - parseFloat(a.validatorId)),
-                    balanced: analysisData.validators.balanced
-                        .map((v) => ({
-                            validatorId: v.validatorId,
-                            currentDelegation: v.currentDelegation,
-                            expectedDelegation: v.expectedDelegation,
-                            difference: v.difference,
-                            stsBalance: v.stsBalance || 0,
-                            boostWeight: v.boostWeight || 0,
-                            maxDelegation: v.maxDelegation,
-                            remainingCapacity: v.remainingCapacity,
-                            canReceiveDelegation: v.canReceiveDelegation,
-                            status: v.status,
-                        }))
-                        .sort((a, b) => parseFloat(b.validatorId) - parseFloat(a.validatorId)),
-                    notAllowed: analysisData.validators.notAllowed
-                        .map((v) => ({
-                            validatorId: v.validatorId,
-                            currentDelegation: v.currentDelegation,
-                            expectedDelegation: v.expectedDelegation,
-                            difference: v.difference,
-                            status: v.status,
-                        }))
-                        .sort((a, b) => parseFloat(b.validatorId) - parseFloat(a.validatorId)),
+                    overDelegated: formatValidators(analysisData.validators.overDelegated),
+                    underDelegated: formatValidators(analysisData.validators.underDelegated),
+                    balanced: formatValidators(analysisData.validators.balanced),
+                    notAllowed: formatValidators(analysisData.validators.notAllowed).map(
+                        ({ validatorId, currentDelegation, expectedDelegation, difference, status }) => ({
+                            validatorId,
+                            currentDelegation,
+                            expectedDelegation,
+                            difference,
+                            status,
+                        }),
+                    ),
                 },
             },
         };

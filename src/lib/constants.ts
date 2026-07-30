@@ -1,5 +1,7 @@
 export const API_URL = 'https://backend-v3.beets-ftm-node.com/graphql';
 
+// To add a new validator, add its id here. It gets picked up even before it has any
+// delegation. Optionally add its wallets to VALIDATOR_MAPPING (GitHub action) for boost.
 export const ALLOWED_VALIDATORS = ['13', '14', '15', '16', '17', '18', '23', '29', '30', '39', '44', '45', '51'];
 
 export const BEETS_VALIDATOR_ID = '44';

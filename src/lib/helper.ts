@@ -61,42 +61,44 @@ export function calculateExpectedDelegations(
     validatorBoostData: ValidatorBoostData[],
     totalDelegation: number,
     totalBoostedDelegation: number,
-    allDelegationValidators: string[],
 ): Map<string, number> {
-    // Filter to only allowed validators for receiving delegation
-    const allowedValidators = allDelegationValidators.filter((id) => ALLOWED_VALIDATORS.includes(id));
-
-    const totalValidators = allowedValidators.length;
     const evenlyDistributedAmount = (totalDelegation - totalBoostedDelegation) / 2;
     const boostedDistributedAmount = evenlyDistributedAmount + totalBoostedDelegation;
 
-    // Half split evenly across ALLOWED validators only
-    const evenShare = evenlyDistributedAmount / totalValidators;
+    // Half split evenly across ALLOWED validators only; not-allowed validators expect 0
+    const evenShare = evenlyDistributedAmount / ALLOWED_VALIDATORS.length;
 
     const expectedDelegations = new Map<string, number>();
 
-    // Initialize ALL validators (including not-allowed ones) with 0
-    for (const validatorId of allDelegationValidators) {
-        expectedDelegations.set(validatorId, 0);
-    }
-
-    // Set even share for allowed validators only
-    for (const validatorId of allowedValidators) {
-        expectedDelegations.set(validatorId, evenShare);
-    }
-
-    // Add weighted share based on boost weights for allowed validators only
-    for (const validatorId of allowedValidators) {
+    for (const validatorId of ALLOWED_VALIDATORS) {
         const boostData = validatorBoostData.find((data) => data.validatorId === validatorId);
-        if (boostData && boostData.weight > 0) {
-            // Convert weight percentage to decimal and apply to half delegation
-            const weightedShare = (boostData.weight / 100) * boostedDistributedAmount;
-            const currentExpected = expectedDelegations.get(validatorId) || evenShare;
-            expectedDelegations.set(validatorId, currentExpected + weightedShare);
-        }
+        // Weight is a percentage of the boosted half
+        const weightedShare = ((boostData?.weight || 0) / 100) * boostedDistributedAmount;
+        expectedDelegations.set(validatorId, evenShare + weightedShare);
     }
 
     return expectedDelegations;
+}
+
+// Shared data loading for staking and withdrawal recommendations. Analyzes the union of
+// validators with existing delegation and ALLOWED_VALIDATORS, so a newly allowed validator
+// (no delegation yet, absent from the backend response) still gets recommendations.
+export async function getDelegationState() {
+    const [boostData, delegationData] = await Promise.all([loadValidatorBoostData(), getDelegationData()]);
+
+    if (delegationData.length === 0) {
+        throw new Error('No delegation data found.');
+    }
+
+    // Raw decimal strings from the API to preserve full precision for parseEther
+    const delegations = new Map(delegationData.map((d) => [d.validatorId, d.assetsDelegated]));
+    const allValidatorIds = [...new Set([...delegations.keys(), ...ALLOWED_VALIDATORS])];
+
+    const totalDelegation = delegationData.reduce((sum, d) => sum + parseFloat(d.assetsDelegated), 0);
+    const totalBoostedDelegation = boostData.reduce((sum, boost) => sum + boost.totalSBalance, 0);
+    const expectedDelegations = calculateExpectedDelegations(boostData, totalDelegation, totalBoostedDelegation);
+
+    return { boostData, delegations, allValidatorIds, totalDelegation, totalBoostedDelegation, expectedDelegations };
 }
 
 export async function loadValidatorBoostData(): Promise<ValidatorBoostData[]> {

@@ -1,8 +1,7 @@
-import * as fs from 'fs';
 import { createPublicClient, http, formatUnits, getAddress } from 'viem';
 import { sonic } from 'viem/chains';
-import { API_URL, ALLOWED_VALIDATORS, SFC_ADDRESS, BEETS_VALIDATOR_ID } from './constants';
-import { calculateExpectedDelegations, getDelegationData, loadValidatorBoostData, ValidatorBoostData } from './helper';
+import { ALLOWED_VALIDATORS, SFC_ADDRESS, BEETS_VALIDATOR_ID } from './constants';
+import { getDelegationState } from './helper';
 
 // SFC (Staker Faucet Contract) address for Sonic chain
 
@@ -37,13 +36,6 @@ const SFC_ABI = [
         type: 'function',
     },
 ];
-
-interface ValidatorBalance {
-    validatorId: string;
-    totalStSBalance: number;
-    totalSBalance: number;
-    weight: number;
-}
 
 interface ValidatorInfo {
     validatorId: string;
@@ -113,69 +105,34 @@ async function getValidatorInfo(validatorId: string): Promise<ValidatorInfo | nu
 }
 
 async function getValidatorInfos(validatorIds: string[]): Promise<Map<string, ValidatorInfo>> {
-    const validatorInfos = new Map<string, ValidatorInfo>();
+    const infos = await Promise.all(validatorIds.map(getValidatorInfo));
 
-    for (const validatorId of validatorIds) {
-        const info = await getValidatorInfo(validatorId);
-
-        if (info) {
-            validatorInfos.set(validatorId, info);
-        }
-    }
-
-    return validatorInfos;
+    return new Map(infos.filter((info): info is ValidatorInfo => info !== null).map((info) => [info.validatorId, info]));
 }
 
 // Export for use in API
 export async function getStakingRecommendation() {
     try {
-        const validatorData = await loadValidatorBoostData();
-        // Get delegation data
-        const delegationData = await getDelegationData();
-
-        if (delegationData.length === 0) {
-            throw new Error('No delegation data found.');
-        }
-
-        // Calculate total delegation
-        const totalDelegation = delegationData.reduce((sum, d) => sum + parseFloat(d.assetsDelegated), 0);
-
-        const totalBoostedDelegation = Array.from(validatorData.values()).reduce(
-            (sum, boost) => sum + boost.totalSBalance,
-            0,
-        );
-
-        // Calculate expected delegations using boost weights
-
-        const allDelegationValidators = delegationData.map((d) => d.validatorId);
-        const expectedDelegations = calculateExpectedDelegations(
-            validatorData,
-            totalDelegation,
-            totalBoostedDelegation,
-            allDelegationValidators,
-        );
+        const { boostData, delegations, allValidatorIds, totalDelegation, totalBoostedDelegation, expectedDelegations } =
+            await getDelegationState();
 
         // Get validator info for all validators
-        const validatorInfos = await getValidatorInfos(allDelegationValidators);
+        const validatorInfos = await getValidatorInfos(allValidatorIds);
 
         // Create analysis results
         const analysisResults: DelegationAnalysis[] = [];
 
-        for (const delegation of delegationData) {
-            const currentDelegation = parseFloat(delegation.assetsDelegated);
-            const validatorInfo = validatorInfos.get(delegation.validatorId);
+        for (const validatorId of allValidatorIds) {
+            const currentDelegation = parseFloat(delegations.get(validatorId) || '0');
+            const validatorInfo = validatorInfos.get(validatorId);
             const expectedDelegation =
-                delegation.validatorId === BEETS_VALIDATOR_ID
+                validatorId === BEETS_VALIDATOR_ID
                     ? validatorInfo?.maxDelegation || 0
-                    : expectedDelegations.get(delegation.validatorId) || 0;
-            const maxDelegation = validatorInfo?.maxDelegation || 0;
-            const totalStake = validatorInfo?.receivedStake || 0;
-            const remainingCapacity = validatorInfo?.remainingCapacity || 0;
-            const canReceiveDelegation = validatorInfo?.canReceiveDelegation || false;
+                    : expectedDelegations.get(validatorId) || 0;
             const difference = currentDelegation - expectedDelegation;
 
             let status: 'over-delegated' | 'under-delegated' | 'balanced' | 'not-allowed';
-            if (!ALLOWED_VALIDATORS.includes(delegation.validatorId)) {
+            if (!ALLOWED_VALIDATORS.includes(validatorId)) {
                 status = 'not-allowed';
             } else if (Math.abs(difference) < 1) {
                 status = 'balanced';
@@ -186,16 +143,16 @@ export async function getStakingRecommendation() {
             }
 
             // Get validator balance data
-            const validatorBalance = validatorData.find((v) => v.validatorId === delegation.validatorId);
+            const validatorBalance = boostData.find((v) => v.validatorId === validatorId);
 
             analysisResults.push({
-                validatorId: delegation.validatorId,
+                validatorId,
                 currentDelegation,
                 expectedDelegation,
-                maxDelegation,
-                totalStake,
-                remainingCapacity,
-                canReceiveDelegation,
+                maxDelegation: validatorInfo?.maxDelegation || 0,
+                totalStake: validatorInfo?.receivedStake || 0,
+                remainingCapacity: validatorInfo?.remainingCapacity || 0,
+                canReceiveDelegation: validatorInfo?.canReceiveDelegation || false,
                 difference,
                 status,
                 // Additional fields for API response
